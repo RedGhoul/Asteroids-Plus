@@ -11,7 +11,10 @@ import SpriteKit
 extension GameScene {
     
     func showPopUp() {
-        
+
+        // Haptic feedback for game over
+        HapticManager.shared.notification(.error)
+
         let bg = SKShapeNode(rectOf: CGSize(width: self.frame.width*0.5, height: self.frame.height*0.9))
         bg.name = kPopupBGName
         bg.fillColor = .white

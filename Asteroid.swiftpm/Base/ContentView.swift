@@ -2,23 +2,27 @@ import SwiftUI
 import SpriteKit
 
 struct ContentView: View {
-    
-    var scene: SKScene {
+
+    func scene(for geometry: GeometryProxy) -> SKScene {
         let scene = MainMenuScene()
-        scene.size = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
-        scene.scaleMode = .fill
+        scene.size = geometry.size
+        scene.scaleMode = .aspectFill
+
+        // Pass safe area insets to scene
+        scene.userData = NSMutableDictionary()
+        scene.userData?["safeAreaTop"] = geometry.safeAreaInsets.top
+        scene.userData?["safeAreaBottom"] = geometry.safeAreaInsets.bottom
+        scene.userData?["safeAreaLeading"] = geometry.safeAreaInsets.leading
+        scene.userData?["safeAreaTrailing"] = geometry.safeAreaInsets.trailing
+
         return scene
      }
-    
+
     var body: some View {
-        
-        GeometryReader { (geometry) in
-            
-            SpriteView(scene: self.scene)
-                .ignoresSafeArea()
+        GeometryReader { geometry in
+            SpriteView(scene: scene(for: geometry))
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center)
         }
-
     }
 }
 

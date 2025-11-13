@@ -53,3 +53,48 @@ let kPopupScoreName: String = "popupScore"
 // Animation
 let kExplosionDuration: CFTimeInterval = 0.5
 let kExplosionLength: CGFloat = 10.0
+
+// MARK: - HUD Layout System
+struct HUDLayout {
+    let scorePosition: CGPoint
+    let livesPosition: CGPoint
+    let asteroidCountPosition: CGPoint
+    let safeMargin: CGFloat
+    let verticalSpacing: CGFloat
+    let fontSize: CGFloat
+
+    init(screenSize: CGSize, safeAreaInsets: UIEdgeInsets) {
+        // Dynamic margin: 5% of screen width, minimum 20, maximum 50
+        self.safeMargin = max(20, min(50, screenSize.width * 0.05))
+
+        let topMargin = safeAreaInsets.top + safeMargin
+        let leadingMargin = safeAreaInsets.left + safeMargin
+        let trailingMargin = screenSize.width - safeAreaInsets.right - safeMargin
+
+        // Positions relative to scene center (0,0)
+        let halfWidth = screenSize.width / 2
+        let halfHeight = screenSize.height / 2
+
+        // Dynamic spacing and font size
+        self.verticalSpacing = max(30, screenSize.height * 0.04)
+        self.fontSize = max(60, min(80, screenSize.width / 375 * 60))
+
+        // Top-left for score
+        self.scorePosition = CGPoint(
+            x: -halfWidth + leadingMargin,
+            y: halfHeight - topMargin
+        )
+
+        // Below score for lives
+        self.livesPosition = CGPoint(
+            x: -halfWidth + leadingMargin,
+            y: halfHeight - topMargin - verticalSpacing
+        )
+
+        // Top-right for asteroid count
+        self.asteroidCountPosition = CGPoint(
+            x: halfWidth - trailingMargin,
+            y: halfHeight - topMargin
+        )
+    }
+}
