@@ -8,12 +8,28 @@
 import SpriteKit
 
 class MainMenuScene: SKScene {
-    
+
     var systemTime: CFTimeInterval = 1.0
-    
-    
+    private var hudLayout: HUDLayout?
+
+
     override func didMove(to view: SKView) {
-        
+
+        // Extract safe area insets from userData
+        let topInset = userData?["safeAreaTop"] as? CGFloat ?? 0
+        let bottomInset = userData?["safeAreaBottom"] as? CGFloat ?? 0
+        let leadingInset = userData?["safeAreaLeading"] as? CGFloat ?? 0
+        let trailingInset = userData?["safeAreaTrailing"] as? CGFloat ?? 0
+
+        let safeInsets = UIEdgeInsets(
+            top: topInset,
+            left: leadingInset,
+            bottom: bottomInset,
+            right: trailingInset
+        )
+
+        hudLayout = HUDLayout(screenSize: size, safeAreaInsets: safeInsets)
+
         configure()
     }
     
@@ -39,7 +55,9 @@ class MainMenuScene: SKScene {
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         let gameScene = GameScene(size: self.size)
-        
+        // Pass safe area insets to GameScene
+        gameScene.userData = self.userData
+
         self.view?.presentScene(gameScene, transition: .fade(withDuration: 1.0))
     }
 }
@@ -50,27 +68,30 @@ class MainMenuScene: SKScene {
 extension MainMenuScene {
     
     private func configureHUD() {
-        
+        guard let layout = hudLayout else { return }
+
+        // Title label with responsive font size
         let titleLabel = SKLabelNode()
         titleLabel.fontName = "Avenir"
         titleLabel.text = "Asteroids+"
         titleLabel.horizontalAlignmentMode = .left
         titleLabel.verticalAlignmentMode = .bottom
-        titleLabel.fontSize = 100
+        titleLabel.fontSize = layout.fontSize * 1.5  // Larger for title
         titleLabel.fontColor = .black
         titleLabel.position = CGPoint(x: self.frame.midX, y: self.frame.midY)
         titleLabel.zPosition = 10
         self.addChild(titleLabel)
-        
+
         let titleBG = SKShapeNode(rect: CGRect(x: titleLabel.position.x-25, y: titleLabel.position.y-25, width: titleLabel.frame.width+50, height: titleLabel.frame.height+50))
         titleBG.fillColor = .white
         titleBG.zPosition = 9
         self.addChild(titleBG)
-        
+
+        // Touch anywhere label with responsive font size and safe positioning
         let touchAnywhereLabel = SKLabelNode()
         touchAnywhereLabel.fontName = kRetroFontName
         touchAnywhereLabel.fontColor = .white
-        touchAnywhereLabel.fontSize = 20
+        touchAnywhereLabel.fontSize = layout.fontSize * 0.3
         touchAnywhereLabel.text = "> Tap Anywhere to Start <"
         touchAnywhereLabel.position = CGPoint(x: titleBG.frame.midX, y: titleBG.frame.minY - titleBG.frame.height)
         self.addChild(touchAnywhereLabel)

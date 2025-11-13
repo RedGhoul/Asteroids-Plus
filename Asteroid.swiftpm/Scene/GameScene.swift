@@ -9,7 +9,7 @@ import SpriteKit
 import SwiftUI
 
 class GameScene: SKScene {
-    
+
     // System data
     var score: Int = 0
     var life: Int = 3
@@ -17,26 +17,101 @@ class GameScene: SKScene {
     var isGameOver: Bool = false
     var isGameOverPopupOn: Bool = false
     var speedConstant = 1/kAsteroidSpeedConstant
-    
+
     // Physics Contact
     var contactQueue = [SKPhysicsContact]()
-    
+
     // Fire
     var timePerFire: CFTimeInterval = 1.0           // Fire Cooltime
     var timeOfLastFire: CFTimeInterval = 0.0
     var systemTime: CFTimeInterval = 1.0
     var isLoaded: Bool = true
-    
+
     // Game over popup delay
     var timeRestartDelay: CFTimeInterval = 1.0
     var timeOfGameOver: CFTimeInterval = 0.0
 
+    // HUD Layout
+    private var hudLayout: HUDLayout?
+
+    // Touch Indicator
+    private var touchIndicator: SKShapeNode?
+
+    // Pause Menu
+    private var pauseButton: SKLabelNode?
+    private var isPaused = false
+    private var pauseOverlay: SKShapeNode?
+
     override func didMove(to view: SKView) {
-        
+
+        // Extract safe area insets from userData
+        let topInset = userData?["safeAreaTop"] as? CGFloat ?? 0
+        let bottomInset = userData?["safeAreaBottom"] as? CGFloat ?? 0
+        let leadingInset = userData?["safeAreaLeading"] as? CGFloat ?? 0
+        let trailingInset = userData?["safeAreaTrailing"] as? CGFloat ?? 0
+
+        let safeInsets = UIEdgeInsets(
+            top: topInset,
+            left: leadingInset,
+            bottom: bottomInset,
+            right: trailingInset
+        )
+
+        hudLayout = HUDLayout(screenSize: size, safeAreaInsets: safeInsets)
+
         configure()
-        
+
         startWave(wave: wave)
-        
+
+    }
+
+    override func didChangeSize(_ oldSize: CGSize) {
+        super.didChangeSize(oldSize)
+
+        guard let view = view else { return }
+
+        // Recalculate layout when size changes
+        let topInset = userData?["safeAreaTop"] as? CGFloat ?? 0
+        let bottomInset = userData?["safeAreaBottom"] as? CGFloat ?? 0
+        let leadingInset = userData?["safeAreaLeading"] as? CGFloat ?? 0
+        let trailingInset = userData?["safeAreaTrailing"] as? CGFloat ?? 0
+
+        let safeInsets = UIEdgeInsets(
+            top: topInset,
+            left: leadingInset,
+            bottom: bottomInset,
+            right: trailingInset
+        )
+
+        hudLayout = HUDLayout(screenSize: size, safeAreaInsets: safeInsets)
+
+        // Update HUD element positions
+        if let scoreLabel = childNode(withName: kScoreLabelName) as? SKLabelNode,
+           let layout = hudLayout {
+            scoreLabel.position = layout.scorePosition
+            scoreLabel.fontSize = layout.fontSize * 0.4
+        }
+
+        if let lifeLabel = childNode(withName: kLifeLabelName) as? SKLabelNode,
+           let layout = hudLayout {
+            lifeLabel.position = layout.livesPosition
+            lifeLabel.fontSize = layout.fontSize * 0.3
+        }
+
+        if let asteroidLabel = childNode(withName: kAsteroidLeftTitleName) as? SKLabelNode,
+           let layout = hudLayout {
+            asteroidLabel.position = layout.asteroidCountPosition
+            asteroidLabel.fontSize = layout.fontSize * 0.3
+        }
+
+        if let asteroidNumberLabel = childNode(withName: kAsteroidLeftNumberName) as? SKLabelNode,
+           let layout = hudLayout {
+            asteroidNumberLabel.position = CGPoint(
+                x: layout.asteroidCountPosition.x,
+                y: layout.asteroidCountPosition.y - layout.verticalSpacing * 0.5
+            )
+            asteroidNumberLabel.fontSize = layout.fontSize * 0.5
+        }
     }
     
     override func update(_ currentTime: TimeInterval) {
@@ -52,14 +127,86 @@ class GameScene: SKScene {
     }
     
     func configure() {
-        
+
         self.backgroundColor = .black
         physicsWorld.contactDelegate = self
-        
+
         let ship = ShipNode(scale: kShipScale, position: CGPoint(x: self.frame.midX, y: self.frame.midY))
         self.addChild(ship)
-        
+
         configureHUD()
+        setupTouchIndicator()
+        setupPauseButton()
+    }
+
+    func setupTouchIndicator() {
+        touchIndicator = SKShapeNode(circleOfRadius: 30)
+        touchIndicator?.fillColor = .clear
+        touchIndicator?.strokeColor = UIColor.white.withAlphaComponent(0.5)
+        touchIndicator?.lineWidth = 3
+        touchIndicator?.isHidden = true
+        touchIndicator?.zPosition = 1000
+        addChild(touchIndicator!)
+    }
+
+    func setupPauseButton() {
+        guard let layout = hudLayout else { return }
+
+        pauseButton = SKLabelNode(text: "⏸")
+        pauseButton?.fontSize = layout.fontSize * 0.6
+        pauseButton?.position = CGPoint(x: 0, y: layout.scorePosition.y)
+        pauseButton?.zPosition = 100
+        pauseButton?.name = "pauseButton"
+        addChild(pauseButton!)
+    }
+
+    func showPauseMenu() {
+        isPaused = true
+        physicsWorld.speed = 0
+        speed = 0  // Pause all actions in the scene
+
+        // Semi-transparent overlay
+        pauseOverlay = SKShapeNode(rectOf: size)
+        pauseOverlay!.fillColor = UIColor.black.withAlphaComponent(0.7)
+        pauseOverlay!.strokeColor = .clear
+        pauseOverlay!.zPosition = 200
+        pauseOverlay!.position = CGPoint(x: frame.midX, y: frame.midY)
+        addChild(pauseOverlay!)
+
+        // Pause title
+        let pauseTitle = SKLabelNode(text: "PAUSED")
+        pauseTitle.fontSize = hudLayout?.fontSize ?? 60
+        pauseTitle.position = CGPoint(x: 0, y: 100)
+        pauseTitle.name = "pauseTitle"
+        pauseTitle.zPosition = 201
+        pauseOverlay!.addChild(pauseTitle)
+
+        // Resume button
+        let resumeLabel = SKLabelNode(text: "RESUME")
+        resumeLabel.fontSize = (hudLayout?.fontSize ?? 60) * 0.8
+        resumeLabel.position = CGPoint(x: 0, y: 0)
+        resumeLabel.name = "resume"
+        resumeLabel.zPosition = 201
+        pauseOverlay!.addChild(resumeLabel)
+
+        // Quit button
+        let quitLabel = SKLabelNode(text: "MAIN MENU")
+        quitLabel.fontSize = (hudLayout?.fontSize ?? 60) * 0.8
+        quitLabel.position = CGPoint(x: 0, y: -80)
+        quitLabel.name = "quit"
+        quitLabel.zPosition = 201
+        pauseOverlay!.addChild(quitLabel)
+
+        HapticManager.shared.selection()
+    }
+
+    func hidePauseMenu() {
+        isPaused = false
+        physicsWorld.speed = 1
+        speed = 1  // Resume all actions
+        pauseOverlay?.removeFromParent()
+        pauseOverlay = nil
+        HapticManager.shared.selection()
     }
     
 }
@@ -68,30 +215,65 @@ class GameScene: SKScene {
 extension GameScene {
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        
+        guard let touch = touches.first else { return }
+        let point = touch.location(in: self)
+        let tappedNode = atPoint(point)
+
+        // Handle game over restart
         if isGameOver && (systemTime - timeOfGameOver > timeRestartDelay){
-            
             let gameScene = GameScene(size: self.size)
+            // Pass safe area insets to new scene
+            gameScene.userData = self.userData
             self.view?.presentScene(gameScene, transition: .fade(withDuration: 1.0))
+            return
         }
-        
-        if let point = touches.first?.location(in: self) {
-            orientShip(touchLocation: point)
+
+        // Handle pause button tap
+        if tappedNode.name == "pauseButton" && !isGameOver {
+            showPauseMenu()
+            return
         }
-        
+
+        // Handle pause menu interactions
+        if isPaused {
+            if tappedNode.name == "resume" {
+                hidePauseMenu()
+            } else if tappedNode.name == "quit" {
+                let menuScene = MainMenuScene(size: size)
+                menuScene.userData = self.userData
+                view?.presentScene(menuScene, transition: .fade(withDuration: 0.5))
+                HapticManager.shared.selection()
+            }
+            return
+        }
+
+        // Normal gameplay controls
+        orientShip(touchLocation: point)
+        // Show touch indicator
+        touchIndicator?.position = point
+        touchIndicator?.isHidden = false
     }
-    
+
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        
+        // Don't process touch moves when paused
+        guard !isPaused else { return }
+
         if let point = touches.first?.location(in: self) {
             orientShip(touchLocation: point)
+            // Move touch indicator
+            touchIndicator?.position = point
         }
     }
-    
+
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Don't process touch ends when paused
+        guard !isPaused else { return }
+
         if let point = touches.first?.location(in: self) {
             fireBullet(touchLocation: point)
         }
+        // Hide touch indicator
+        touchIndicator?.isHidden = true
     }
 }
 
@@ -107,26 +289,29 @@ extension GameScene {
     }
     
     func fireBullet(touchLocation: CGPoint) {
-        
+
         guard isLoaded else { return }
         guard let ship = childNode(withName: kShipName) as? ShipNode else { return }     // Check is there ship
-    
+
         let departure = ship.position
         let bullet = getBulletNode(position: departure)
         self.addChild(bullet)
-        
+
         let destination = (touchLocation - bullet.position).normalized() * CGPoint(x: 1000, y: 1000) + bullet.position
-        
+
         bullet.run(SKAction.sequence([
             SKAction.move(to: destination, duration: 1.0),
             SKAction.removeFromParent()
         ]))
-        
+
         isLoaded = false
         timeOfLastFire = systemTime
         ship.fillColor = kShipUnloadedColor
-        
+
         run(SKAction.playSoundFileNamed("Fire.wav", waitForCompletion: false))
+
+        // Haptic feedback for shooting
+        HapticManager.shared.impact(.light)
     }
     
     func controlFireRate(forUpdate currentTime: CFTimeInterval) {
@@ -158,59 +343,71 @@ extension GameScene: SKPhysicsContactDelegate {
         
         // Asteroid Hit
         if nodeNames.contains(kAsteroidName) && nodeNames.contains(kBulletName) {
-            
+
             let asteroidNode = (contact.bodyA.node as? AsteroidNode) ?? (contact.bodyB.node as! AsteroidNode)
-            
+
             makeExplosion(position: asteroidNode.position)
             updateScore(addedScore: asteroidNode.size.score)
-            
+
             splitAsteroid(asteroid: asteroidNode)
-            
+
             if Int.random(in: 1...100) <= 10 {
                 dropRandomItem(position: asteroidNode.position)
             }
-            
+
             contact.bodyA.node?.removeFromParent()
             contact.bodyB.node?.removeFromParent()
-            
+
             updateAsteroidLeft()
-            
+
             run(SKAction.playSoundFileNamed("AsteroidHit.wav", waitForCompletion: false))
-            
+
+            // Haptic feedback for asteroid destruction
+            HapticManager.shared.impact(.light)
+
         // Hit Fast Fire Item
         } else if nodeNames.contains(kGunItemName) && nodeNames.contains(kBulletName) {
-                
+
             hitBulletItem()
-            
+
             contact.bodyA.node?.removeFromParent()
             contact.bodyB.node?.removeFromParent()
-            
+
             run(SKAction.playSoundFileNamed("BulletUp.wav", waitForCompletion: false))
-            
-        
+
+            // Haptic feedback for power-up collection
+            HapticManager.shared.notification(.success)
+
+
         // Hit Life Item
         } else if nodeNames.contains(kLifeItemName) && nodeNames.contains(kBulletName) {
-                
+
             hitLifeItem()
-        
+
             contact.bodyA.node?.removeFromParent()
             contact.bodyB.node?.removeFromParent()
-            
+
             run(SKAction.playSoundFileNamed("LifeUp.wav", waitForCompletion: false))
-            
+
+            // Haptic feedback for power-up collection
+            HapticManager.shared.notification(.success)
+
         // Ship Hit
         } else if nodeNames.contains(kShipName) && nodeNames.contains(kAsteroidName) {
-            
+
             updateLife(offset: -1)
-            
+
             let asteroidNode = (contact.bodyA.node as? AsteroidNode) ?? (contact.bodyB.node as! AsteroidNode)
-            
+
             makeExplosion(position: asteroidNode.position)
             splitAsteroid(asteroid: asteroidNode)
-            
+
             asteroidNode.removeFromParent()
-            
+
             run(SKAction.playSoundFileNamed("ShipHit.wav", waitForCompletion: false))
+
+            // Haptic feedback for ship collision
+            HapticManager.shared.impact(.heavy)
         }
     }
     
@@ -398,33 +595,49 @@ extension GameScene {
 extension GameScene {
     
     func configureHUD() {
-        
+        guard let layout = hudLayout else { return }
+
+        // Score label
         let scoreLabel = SKLabelNode(text: String(format: "%04u pt", self.score))
-        scoreLabel.position = CGPoint(x: kHUDMargin + scoreLabel.frame.width/2, y: self.frame.height-kHUDMargin)
+        scoreLabel.position = layout.scorePosition
+        scoreLabel.horizontalAlignmentMode = .left
+        scoreLabel.verticalAlignmentMode = .top
         scoreLabel.name = kScoreLabelName
         scoreLabel.fontName = kRetroFontName
+        scoreLabel.fontSize = layout.fontSize * 0.4  // Relative to base font size
         self.addChild(scoreLabel)
-        
+
+        // Life label
         let lifeLabel = SKLabelNode(text: life.lifeString)
-        lifeLabel.position = CGPoint(x: scoreLabel.position.x, y: scoreLabel.position.y - lifeLabel.frame.height - 10)
+        lifeLabel.position = layout.livesPosition
+        lifeLabel.horizontalAlignmentMode = .left
+        lifeLabel.verticalAlignmentMode = .top
         lifeLabel.name = kLifeLabelName
         lifeLabel.fontName = kRetroFontName
-        lifeLabel.fontSize = 20
+        lifeLabel.fontSize = layout.fontSize * 0.3  // Smaller than score
         self.addChild(lifeLabel)
-        
-        let asteroidLabel = SKLabelNode(text: String(format: "Asteroids Left:", self.score))
-        asteroidLabel.horizontalAlignmentMode = .center
-        asteroidLabel.position = CGPoint(x: self.frame.width-(kHUDMargin + asteroidLabel.frame.width/2), y: self.frame.height-kHUDMargin)
+
+        // Asteroid count title
+        let asteroidLabel = SKLabelNode(text: "Asteroids Left:")
+        asteroidLabel.position = layout.asteroidCountPosition
+        asteroidLabel.horizontalAlignmentMode = .right
+        asteroidLabel.verticalAlignmentMode = .top
         asteroidLabel.name = kAsteroidLeftTitleName
         asteroidLabel.fontName = kRetroFontName
-        asteroidLabel.fontSize = 20
+        asteroidLabel.fontSize = layout.fontSize * 0.3
         self.addChild(asteroidLabel)
-        
-        let asteroidNumberLabel = SKLabelNode(text: String(format: "%02u", self.score))
-        asteroidLabel.horizontalAlignmentMode = .center
+
+        // Asteroid count number
+        let asteroidNumberLabel = SKLabelNode(text: String(format: "%02u", 0))
+        asteroidNumberLabel.position = CGPoint(
+            x: layout.asteroidCountPosition.x,
+            y: layout.asteroidCountPosition.y - layout.verticalSpacing * 0.5
+        )
+        asteroidNumberLabel.horizontalAlignmentMode = .right
+        asteroidNumberLabel.verticalAlignmentMode = .top
         asteroidNumberLabel.name = kAsteroidLeftNumberName
         asteroidNumberLabel.fontName = kRetroFontName
-        asteroidNumberLabel.position = CGPoint(x: asteroidLabel.frame.midX, y: asteroidLabel.frame.minY-asteroidNumberLabel.frame.height-10)
+        asteroidNumberLabel.fontSize = layout.fontSize * 0.5
         self.addChild(asteroidNumberLabel)
     }
     
