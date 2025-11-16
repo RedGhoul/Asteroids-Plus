@@ -24,6 +24,8 @@ class HapticManager {
     }
 
     func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        guard GameSettings.shared.hapticFeedbackEnabled else { return }
+
         switch style {
         case .light:
             lightImpact.impactOccurred()
@@ -45,11 +47,13 @@ class HapticManager {
     }
 
     func notification(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        guard GameSettings.shared.hapticFeedbackEnabled else { return }
         notificationFeedback.notificationOccurred(type)
         notificationFeedback.prepare()
     }
 
     func selection() {
+        guard GameSettings.shared.hapticFeedbackEnabled else { return }
         selectionFeedback.selectionChanged()
         selectionFeedback.prepare()
     }

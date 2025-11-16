@@ -37,6 +37,10 @@ class GameScene: SKScene {
     // Touch Indicator
     private var touchIndicator: SKShapeNode?
 
+    // Virtual Joystick
+    private var virtualJoystick: VirtualJoystick?
+    private var fireButton: SKShapeNode?
+
     // Pause Menu
     private var pauseButton: SKLabelNode?
     private var isPaused = false
@@ -115,14 +119,19 @@ class GameScene: SKScene {
     }
     
     override func update(_ currentTime: TimeInterval) {
-        
+
         self.systemTime = currentTime
-        
+
         processContacts(forUpdate: currentTime)
         processAsteroidOutScreen()
-        
+
         controlFireRate(forUpdate: currentTime)
-        
+
+        // Update ship orientation for joystick mode
+        if GameSettings.shared.controlScheme == .virtualJoystick {
+            updateShipOrientationForJoystick()
+        }
+
         processGameOver()
     }
     
@@ -136,6 +145,7 @@ class GameScene: SKScene {
 
         configureHUD()
         setupTouchIndicator()
+        setupVirtualJoystick()
         setupPauseButton()
     }
 
@@ -147,6 +157,49 @@ class GameScene: SKScene {
         touchIndicator?.isHidden = true
         touchIndicator?.zPosition = 1000
         addChild(touchIndicator!)
+    }
+
+    func setupVirtualJoystick() {
+        guard let layout = hudLayout else { return }
+
+        // Create virtual joystick (positioned bottom-left)
+        virtualJoystick = VirtualJoystick()
+        virtualJoystick?.zPosition = 1000
+        addChild(virtualJoystick!)
+
+        // Create fire button (positioned bottom-right)
+        fireButton = SKShapeNode(circleOfRadius: 50)
+        fireButton?.fillColor = UIColor.white.withAlphaComponent(0.2)
+        fireButton?.strokeColor = UIColor.white.withAlphaComponent(0.5)
+        fireButton?.lineWidth = 2
+        fireButton?.zPosition = 1000
+        fireButton?.name = "fireButton"
+
+        // Position fire button in bottom-right corner
+        let margin = layout.safeMargin
+        fireButton?.position = CGPoint(
+            x: size.width / 2 - margin - 60,
+            y: -size.height / 2 + margin + 60
+        )
+
+        // Add fire icon (simple triangle pointing up)
+        let fireIcon = SKLabelNode(text: "🔥")
+        fireIcon.fontSize = 30
+        fireIcon.verticalAlignmentMode = .center
+        fireIcon.horizontalAlignmentMode = .center
+        fireButton?.addChild(fireIcon)
+
+        addChild(fireButton!)
+
+        // Hide joystick controls if not using that scheme
+        updateControlVisibility()
+    }
+
+    func updateControlVisibility() {
+        let isJoystick = GameSettings.shared.controlScheme == .virtualJoystick
+        virtualJoystick?.isHidden = !isJoystick
+        fireButton?.isHidden = !isJoystick
+        touchIndicator?.isHidden = isJoystick
     }
 
     func setupPauseButton() {
@@ -248,10 +301,16 @@ extension GameScene {
         }
 
         // Normal gameplay controls
-        orientShip(touchLocation: point)
-        // Show touch indicator
-        touchIndicator?.position = point
-        touchIndicator?.isHidden = false
+        if GameSettings.shared.controlScheme == .virtualJoystick {
+            // Virtual joystick mode
+            virtualJoystick?.touchBegan(at: point)
+        } else {
+            // Touch-to-point mode
+            orientShip(touchLocation: point)
+            // Show touch indicator
+            touchIndicator?.position = point
+            touchIndicator?.isHidden = false
+        }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -259,9 +318,15 @@ extension GameScene {
         guard !isPaused else { return }
 
         if let point = touches.first?.location(in: self) {
-            orientShip(touchLocation: point)
-            // Move touch indicator
-            touchIndicator?.position = point
+            if GameSettings.shared.controlScheme == .virtualJoystick {
+                // Virtual joystick mode
+                virtualJoystick?.touchMoved(to: point)
+            } else {
+                // Touch-to-point mode
+                orientShip(touchLocation: point)
+                // Move touch indicator
+                touchIndicator?.position = point
+            }
         }
     }
 
@@ -269,11 +334,24 @@ extension GameScene {
         // Don't process touch ends when paused
         guard !isPaused else { return }
 
-        if let point = touches.first?.location(in: self) {
-            fireBullet(touchLocation: point)
+        if let touch = touches.first {
+            let point = touch.location(in: self)
+            let tappedNode = atPoint(point)
+
+            if GameSettings.shared.controlScheme == .virtualJoystick {
+                // Check if fire button was tapped
+                if tappedNode.name == "fireButton" || tappedNode.parent?.name == "fireButton" {
+                    fireBulletJoystick()
+                } else {
+                    virtualJoystick?.touchEnded()
+                }
+            } else {
+                // Touch-to-point mode
+                fireBullet(touchLocation: point)
+                // Hide touch indicator
+                touchIndicator?.isHidden = true
+            }
         }
-        // Hide touch indicator
-        touchIndicator?.isHidden = true
     }
 }
 
@@ -312,6 +390,48 @@ extension GameScene {
 
         // Haptic feedback for shooting
         HapticManager.shared.impact(.light)
+    }
+
+    func fireBulletJoystick() {
+        guard isLoaded else { return }
+        guard let ship = childNode(withName: kShipName) as? ShipNode else { return }
+        guard let joystick = virtualJoystick else { return }
+
+        let departure = ship.position
+        let bullet = getBulletNode(position: departure)
+        self.addChild(bullet)
+
+        // Fire in the direction the joystick is pointing (or ship is facing)
+        let fireAngle = joystick.angle != 0 ? joystick.angle : ship.zRotation + CGFloat.pi / 2
+        let destination = CGPoint(
+            x: cos(fireAngle) * 1000 + departure.x,
+            y: sin(fireAngle) * 1000 + departure.y
+        )
+
+        bullet.run(SKAction.sequence([
+            SKAction.move(to: destination, duration: 1.0),
+            SKAction.removeFromParent()
+        ]))
+
+        isLoaded = false
+        timeOfLastFire = systemTime
+        ship.fillColor = kShipUnloadedColor
+
+        run(SKAction.playSoundFileNamed("Fire.wav", waitForCompletion: false))
+
+        // Haptic feedback for shooting
+        HapticManager.shared.impact(.light)
+    }
+
+    func updateShipOrientationForJoystick() {
+        guard let ship = childNode(withName: kShipName) as? ShipNode else { return }
+        guard let joystick = virtualJoystick else { return }
+
+        // Only update orientation if joystick is being used
+        if joystick.isTouching() && joystick.direction != .zero {
+            let angle = joystick.angle
+            ship.zRotation = angle - CGFloat.pi / 2  // Adjust for ship's default orientation
+        }
     }
     
     func controlFireRate(forUpdate currentTime: CFTimeInterval) {
