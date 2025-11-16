@@ -54,6 +54,22 @@ class MainMenuScene: SKScene {
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        let location = touch.location(in: self)
+        let tappedNode = atPoint(location)
+
+        // Check if settings button was tapped
+        if tappedNode.name == "settingsButton" {
+            HapticManager.shared.selection()
+            let transition = SKTransition.fade(withDuration: 0.5)
+            let settingsScene = SettingsScene(size: size)
+            settingsScene.userData = self.userData
+            view?.presentScene(settingsScene, transition: transition)
+            return
+        }
+
+        // Otherwise start game
+        HapticManager.shared.selection()
         let gameScene = GameScene(size: self.size)
         // Pass safe area insets to GameScene
         gameScene.userData = self.userData
@@ -95,6 +111,16 @@ extension MainMenuScene {
         touchAnywhereLabel.text = "> Tap Anywhere to Start <"
         touchAnywhereLabel.position = CGPoint(x: titleBG.frame.midX, y: titleBG.frame.minY - titleBG.frame.height)
         self.addChild(touchAnywhereLabel)
+
+        // Settings button
+        let settingsButton = SKLabelNode()
+        settingsButton.fontName = kRetroFontName
+        settingsButton.fontColor = .white
+        settingsButton.fontSize = layout.fontSize * 0.25
+        settingsButton.text = "⚙ SETTINGS"
+        settingsButton.name = "settingsButton"
+        settingsButton.position = CGPoint(x: titleBG.frame.midX, y: touchAnywhereLabel.position.y - layout.verticalSpacing * 1.5)
+        self.addChild(settingsButton)
     }
 }
 
